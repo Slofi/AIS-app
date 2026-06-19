@@ -398,22 +398,72 @@ async function clearVesselDb() {
 async function loadVersion() { try { const d = await (await fetch('/api/version')).json(); el('app-version').textContent = `AIS App ${d.version} · ${d.commit}`; } catch(e) {} }
 async function checkUpdate() { const msg = el('update-msg'); msg.textContent = 'Checking…'; try { const d = await (await fetch('/api/system/check-update', { method: 'POST' })).json(); msg.textContent = d.ok ? (d.behind ? `${d.behind} commits behind` : 'Up to date') : d.error; } catch(e) { msg.textContent = 'Update check failed'; } }
 async function updateApp() { const msg = el('update-msg'); msg.textContent = 'Updating…'; try { const d = await (await fetch('/api/system/update', { method: 'POST' })).json(); msg.textContent = d.ok ? 'Updated, restarting…' : d.error; } catch(e) { msg.textContent = 'Update failed'; } }
-function _showSplash(msg) {
+function _showSplash(title, msg) {
   const d = document.createElement('div');
-  d.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;align-items:center;justify-content:center;font-size:1rem;color:#555;letter-spacing:0.05em;font-family:system-ui,sans-serif';
-  d.textContent = msg;
+  d.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
+  d.innerHTML = `<div style="text-align:center;padding:24px">
+    <div style="font-size:clamp(2.5rem,8vw,5.5rem);font-weight:700;color:var(--accent);letter-spacing:0.04em;line-height:1">AIS app</div>
+    <div style="margin-top:18px;font-size:1rem;color:#777;letter-spacing:0.05em">${esc(msg)}</div>
+  </div>`;
   document.body.appendChild(d);
 }
 
+function _confirmAction({ title, message, confirmText, danger = false }) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.68);z-index:9998;display:flex;align-items:center;justify-content:center;padding:20px;font-family:system-ui,sans-serif';
+    overlay.innerHTML = `<div style="width:min(360px,calc(100vw - 36px));background:var(--bg2);border:1px solid var(--border2);border-radius:14px;box-shadow:0 14px 48px rgba(0,0,0,0.55);overflow:hidden">
+      <div style="padding:18px 18px 12px;border-bottom:1px solid var(--border)">
+        <div style="font-size:0.82rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--accent);font-weight:700">AIS app</div>
+        <div style="margin-top:8px;font-size:1.05rem;color:var(--text);font-weight:650">${esc(title)}</div>
+      </div>
+      <div style="padding:16px 18px;color:var(--muted);font-size:0.9rem;line-height:1.45">${esc(message)}</div>
+      <div style="display:flex;gap:10px;padding:0 18px 18px">
+        <button data-action="cancel" class="set-btn" style="flex:1">Cancel</button>
+        <button data-action="confirm" class="set-btn${danger ? ' danger' : ''}" style="flex:1;border-color:${danger ? 'rgba(255,80,80,0.4)' : 'var(--accent-border)'};color:${danger ? 'var(--red)' : 'var(--accent)'}">${esc(confirmText)}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const finish = value => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey);
+      resolve(value);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') finish(false);
+      if (e.key === 'Enter') finish(true);
+    };
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) finish(false);
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      finish(btn.dataset.action === 'confirm');
+    });
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 async function appRestart() {
-  _showSplash('AIS restarting...');
+  const ok = await _confirmAction({
+    title: 'Restart AIS app?',
+    message: 'The AIS app service will restart. The page will reload automatically.',
+    confirmText: 'Restart',
+  });
+  if (!ok) return;
+  _showSplash('AIS app', 'Restarting...');
   try { await fetch('/api/system/restart', { method: 'POST' }); } catch(e) {}
   setTimeout(() => location.reload(), 4000);
 }
 
 async function appShutdown() {
-  if (!confirm('Stop AIS app? Start it back from the Dashboard.')) return;
-  _showSplash('AIS offline. Start it back up from the Dashboard.');
+  const ok = await _confirmAction({
+    title: 'Shut down AIS app?',
+    message: 'The AIS app service will stop. Start it back up from the Dashboard.',
+    confirmText: 'Shut down',
+    danger: true,
+  });
+  if (!ok) return;
+  _showSplash('AIS app', 'The app is shut down. Start it back up from the Dashboard.');
   try { await fetch('/api/system/shutdown', { method: 'POST' }); } catch(e) {}
 }
 function tickClock() { const d = new Date(); el('hdr-clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
