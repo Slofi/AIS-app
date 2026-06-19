@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIS</title>
+<link rel="stylesheet" href="/static/lib/leaflet.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+
+<header id="header">
+  <div class="header-left">
+    <span class="app-title">AIS</span>
+    <span class="status-dot" id="ais-dot" title="AIS decoder"></span>
+    <span class="header-stat" id="stat-count">0 vessels</span>
+    <span class="header-sep">·</span>
+    <span class="header-stat" id="stat-range"></span>
+  </div>
+  <div class="header-right">
+    <button class="hdr-btn" id="ais-start-btn" onclick="aisAction('start')">Start</button>
+    <button class="hdr-btn" onclick="aisAction('restart')">Restart</button>
+    <button class="hdr-btn hdr-btn-danger" onclick="aisAction('stop')">Stop</button>
+    <button class="hdr-btn" id="gear-btn" onclick="toggleSettings()" title="Settings">⚙</button>
+    <span class="hdr-clock" id="hdr-clock"></span>
+  </div>
+</header>
+
+<div id="main">
+  <div id="map"></div>
+  <div id="panel">
+    <div class="panel-tabs">
+      <button class="tab-btn active" id="tab-active" onclick="switchTab('active')">Active <span id="badge-active" class="tab-badge">0</span></button>
+      <button class="tab-btn" id="tab-history" onclick="switchTab('history')">History <span id="badge-history" class="tab-badge">0</span></button>
+    </div>
+    <div id="vessel-list"></div>
+  </div>
+</div>
+
+<div id="settings" class="settings hidden">
+  <div class="settings-header">
+    <span class="settings-title-text">Settings</span>
+    <button class="set-close-btn" onclick="toggleSettings()">✕</button>
+  </div>
+
+  <div class="set-section">AIS Input</div>
+  <div class="set-row">
+    <span id="ais-input-label">UDP :10110</span>
+    <button class="set-btn" onclick="aisAction('restart')">Restart</button>
+  </div>
+  <div id="ais-status-msg" style="font-size:0.8rem;color:var(--muted);padding:0 14px 6px"></div>
+
+
+  <div class="set-section">AIS DB</div>
+  <div class="set-row">
+    <span id="db-version-label">Loading...</span>
+    <button class="set-btn" onclick="updateVesselDb()" id="db-update-btn">Update</button>
+  </div>
+  <div id="db-status-msg" style="font-size:0.8rem;color:var(--muted);padding:0 14px 6px"></div>
+  <div class="set-btns">
+    <button class="set-btn" onclick="exportVesselDb()">Export</button>
+    <button class="set-btn" onclick="pickVesselDbImport()">Import</button>
+  </div>
+  <div class="set-btns">
+    <button class="set-btn danger" onclick="clearVesselDb()">Clear local DB</button>
+  </div>
+  <input id="db-import-input" type="file" accept="application/json,.json" style="display:none" onchange="importVesselDbFile(this)">
+
+  <div class="set-section">Map Layer</div>
+  <div id="layer-picker"></div>
+
+  <div class="set-section">Display</div>
+  <div class="set-row">
+    <span>Range rings</span>
+    <label class="toggle"><input type="checkbox" id="rings-toggle" onchange="toggleRings()" checked><span class="slider"></span></label>
+  </div>
+  <div id="rings-opts" class="rings-opts"></div>
+  <div class="set-row">
+    <span>Trails</span>
+    <label class="toggle"><input type="checkbox" id="trails-toggle" onchange="toggleTrails()" checked><span class="slider"></span></label>
+  </div>
+  <div class="set-row">
+    <span>Accent color</span>
+    <input type="color" id="accent-input" value="#e8b04f" onchange="setAccent(this.value)" style="cursor:pointer;border:none;background:none;width:40px;height:32px">
+  </div>
+
+  <div class="set-section">Position</div>
+  <div class="rings-opts">
+    <button class="ring-chip active" id="pos-auto" onclick="setGpsSource('auto')">Auto</button>
+    <button class="ring-chip" id="pos-opstoc" onclick="setGpsSource('opstoc')">OPS-TOC</button>
+    <button class="ring-chip" id="pos-om" onclick="setGpsSource('om')">OM</button>
+    <button class="ring-chip" id="pos-manual" onclick="setGpsSource('manual')">Manual</button>
+  </div>
+  <div id="pos-status" style="font-size:0.8rem;color:var(--muted);padding:0 14px 8px"></div>
+  <div id="pos-manual-inputs" style="display:none;padding:0 14px 12px;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:8px">
+      <input id="pos-lat" class="layer-key-input" type="number" step="0.000001" placeholder="Latitude" style="flex:1">
+      <input id="pos-lon" class="layer-key-input" type="number" step="0.000001" placeholder="Longitude" style="flex:1">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="set-btn" style="flex:1" onclick="startLocationPick()">Pick on map</button>
+      <button class="set-btn" style="flex:1" onclick="applyManualPos()">Apply &amp; Center</button>
+    </div>
+  </div>
+
+
+  <div class="set-section">Alerts</div>
+  <div class="set-row">
+    <span>CPA alert radius</span>
+    <input id="alert-radius-input" class="layer-key-input" type="number" min="0" step="0.1" value="2" onchange="setAlertRadius(this.value)" style="width:80px">
+  </div>
+  <div id="alert-status-msg" style="font-size:0.8rem;color:var(--muted);padding:0 14px 6px"></div>
+
+  <div class="set-section">App</div>
+  <div class="set-row" style="padding-bottom:4px">
+    <span id="app-version" style="font-size:0.8rem;color:var(--muted)">…</span>
+  </div>
+  <div class="set-btns">
+    <button class="set-btn" onclick="checkUpdate()" id="check-update-btn">Check for update</button>
+    <button class="set-btn" onclick="updateApp()">Pull &amp; restart</button>
+  </div>
+  <div id="update-msg" style="font-size:0.8rem;padding:2px 14px 8px"></div>
+  <div class="set-btns">
+    <button class="set-btn" onclick="appRestart()">Restart app</button>
+    <button class="set-btn danger" onclick="appShutdown()">Shutdown</button>
+  </div>
+</div>
+
+<div id="pick-hint" style="display:none;position:fixed;top:calc(var(--header-h) + 12px);left:50%;transform:translateX(-50%);background:rgba(13,17,23,0.94);border:1px solid var(--accent-border);border-radius:10px;padding:12px 22px;font-size:0.9rem;color:var(--accent);z-index:2000;pointer-events:none;letter-spacing:0.03em;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.5)">
+  Tap map to place receiver · Esc to cancel
+</div>
+
+<script src="/static/lib/leaflet.js" onerror="(function(){var s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';document.head.appendChild(s)})()"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
