@@ -59,6 +59,17 @@ _vessel_db_meta: dict = {}
 _db_loaded = False
 
 
+def _asset_version() -> str:
+    try:
+        return subprocess.check_output(
+            ['git', '-C', BASE_DIR, 'rev-parse', '--short', 'HEAD'],
+            text=True,
+            timeout=2,
+        ).strip() or APP_VERSION
+    except Exception:
+        return APP_VERSION
+
+
 # ---------------------------------------------------------------------------
 # AIS NMEA decoding
 # ---------------------------------------------------------------------------
@@ -950,7 +961,7 @@ def _track_gpx(vessel: dict) -> str:
 # ---------------------------------------------------------------------------
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', asset_version=_asset_version())
 
 
 @app.route('/api/vessels')

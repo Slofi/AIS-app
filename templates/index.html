@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AIS</title>
-<link rel="stylesheet" href="/static/lib/leaflet.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
-<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/lib/leaflet.css?v={{ asset_version }}" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
+<link rel="stylesheet" href="/static/css/app.css?v={{ asset_version }}">
 </head>
 <body>
 
@@ -167,7 +167,7 @@
   Tap map to place receiver · Esc to cancel
 </div>
 
-<script src="/static/lib/leaflet.js" onerror="(function(){var s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';document.head.appendChild(s)})()"></script>
-<script src="/static/js/app.js"></script>
+<script src="/static/lib/leaflet.js?v={{ asset_version }}" onerror="(function(){var s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';document.head.appendChild(s)})()"></script>
+<script src="/static/js/app.js?v={{ asset_version }}"></script>
 </body>
 </html>
