@@ -398,8 +398,24 @@ async function clearVesselDb() {
 async function loadVersion() { try { const d = await (await fetch('/api/version')).json(); el('app-version').textContent = `AIS App ${d.version} · ${d.commit}`; } catch(e) {} }
 async function checkUpdate() { const msg = el('update-msg'); msg.textContent = 'Checking…'; try { const d = await (await fetch('/api/system/check-update', { method: 'POST' })).json(); msg.textContent = d.ok ? (d.behind ? `${d.behind} commits behind` : 'Up to date') : d.error; } catch(e) { msg.textContent = 'Update check failed'; } }
 async function updateApp() { const msg = el('update-msg'); msg.textContent = 'Updating…'; try { const d = await (await fetch('/api/system/update', { method: 'POST' })).json(); msg.textContent = d.ok ? 'Updated, restarting…' : d.error; } catch(e) { msg.textContent = 'Update failed'; } }
-async function appRestart() { await fetch('/api/system/restart', { method: 'POST' }); }
-async function appShutdown() { await fetch('/api/system/shutdown', { method: 'POST' }); }
+function _showSplash(msg) {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;align-items:center;justify-content:center;font-size:1rem;color:#555;letter-spacing:0.05em;font-family:system-ui,sans-serif';
+  d.textContent = msg;
+  document.body.appendChild(d);
+}
+
+async function appRestart() {
+  _showSplash('AIS restarting...');
+  try { await fetch('/api/system/restart', { method: 'POST' }); } catch(e) {}
+  setTimeout(() => location.reload(), 4000);
+}
+
+async function appShutdown() {
+  if (!confirm('Stop AIS app? Start it back from the Dashboard.')) return;
+  _showSplash('AIS offline. Start it back up from the Dashboard.');
+  try { await fetch('/api/system/shutdown', { method: 'POST' }); } catch(e) {}
+}
 function tickClock() { const d = new Date(); el('hdr-clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
 loadAccent(); renderRingOpts(); poll(); loadReceiverStatus(); loadVesselDbStatus(); loadAlertSettings(); loadVersion(); tickClock(); setInterval(tickClock, 1000); setInterval(loadReceiverStatus, 10000);
