@@ -74,7 +74,44 @@
     <span>Range rings</span>
     <label class="toggle"><input type="checkbox" id="rings-toggle" onchange="toggleRings()" checked><span class="slider"></span></label>
   </div>
-  <div id="rings-opts" class="rings-opts"></div>
+  <div class="set-row">
+    <span>Ring count</span>
+    <input id="rings-count" class="layer-key-input compact-input" type="number" min="1" max="10" value="3">
+  </div>
+  <div class="set-row">
+    <span>Ring spacing</span>
+    <div class="input-unit">
+      <input id="rings-step" class="layer-key-input compact-input" type="number" min="0.1" max="500" step="0.1" value="10">
+      <span>nm</span>
+    </div>
+  </div>
+  <div class="set-row">
+    <span>Colour</span>
+    <div class="color-swatches" id="rings-swatches">
+      <button class="color-swatch" data-color="#ffffff" style="background:#ffffff" title="White"></button>
+      <button class="color-swatch" data-color="#aaaaaa" style="background:#aaaaaa" title="Gray"></button>
+      <button class="color-swatch" data-color="#e8b04f" style="background:#e8b04f" title="Accent"></button>
+      <button class="color-swatch" data-color="#ef4444" style="background:#ef4444" title="Red"></button>
+      <button class="color-swatch" data-color="#3b82f6" style="background:#3b82f6" title="Blue"></button>
+      <button class="color-swatch" data-color="#22c55e" style="background:#22c55e" title="Green"></button>
+      <input type="color" id="rings-color-custom" class="color-swatch-custom" title="Custom colour">
+    </div>
+  </div>
+  <div class="set-row">
+    <span>Hardness</span>
+    <input id="rings-hardness" class="range-input" type="range" min="0.1" max="1" step="0.05" value="0.5">
+  </div>
+  <div class="set-row">
+    <span>Directions</span>
+    <div class="rings-opts tight">
+      <button id="rings-dir-off" class="ring-chip" type="button" onclick="setRingsCardinals(0)" title="No direction labels">Off</button>
+      <button id="rings-dir-4" class="ring-chip" type="button" onclick="setRingsCardinals(4)" title="N · E · S · W">4</button>
+      <button id="rings-dir-8" class="ring-chip" type="button" onclick="setRingsCardinals(8)" title="N · NE · E · SE · S · SW · W · NW">8</button>
+    </div>
+  </div>
+  <div class="set-btns">
+    <button class="set-btn" type="button" onclick="applyRingsSettings()">Apply Rings</button>
+  </div>
   <div class="set-row">
     <span>Trails</span>
     <label class="toggle"><input type="checkbox" id="trails-toggle" onchange="toggleTrails()" checked><span class="slider"></span></label>

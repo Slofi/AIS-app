@@ -218,9 +218,13 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
   background: var(--bg3); border: 1px solid var(--border2); border-radius: 7px;
   padding: 10px 12px; color: var(--text); font-size: 0.88rem; width: 100%;
 }
+.compact-input { width: 74px; padding: 8px 10px; text-align: right; }
+.input-unit { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 0.8rem; }
+.range-input { flex: 1; accent-color: var(--accent); min-width: 120px; }
 
 /* ─── Ring distance chips ───────────────────────────────────── */
 .rings-opts { display: flex; flex-wrap: wrap; gap: 7px; padding: 6px 14px 12px; }
+.rings-opts.tight { padding: 0; gap: 5px; flex-wrap: nowrap; }
 .ring-chip {
   background: var(--bg3); border: 1px solid var(--border2); border-radius: 7px;
   color: var(--muted); cursor: pointer; padding: 8px 14px; font-size: 0.82rem;
@@ -228,6 +232,24 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 }
 .ring-chip.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent-border); }
 .ring-chip:hover  { border-color: var(--accent-border); color: var(--text); }
+.color-swatches { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 180px; }
+.color-swatch {
+  width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border2);
+  cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.25);
+}
+.color-swatch.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim), inset 0 0 0 1px rgba(0,0,0,0.25); }
+.color-swatch-custom {
+  width: 24px; height: 24px; padding: 0; background: none; border: 1px solid var(--border2);
+  border-radius: 6px; cursor: pointer;
+}
+.range-ring-label, .range-ring-cardinal {
+  white-space: nowrap; font-weight: 700;
+  text-shadow: 0 0 3px #000, 0 0 6px #000, 0 0 10px #000;
+  pointer-events: none;
+}
+.range-ring-label { font-size: 11px; }
+.range-ring-cardinal { font-size: 11px; }
+.range-ring-cardinal.main { font-size: 13px; font-weight: 900; }
 
 /* ─── Toggle switch ─────────────────────────────────────────── */
 .toggle { position: relative; display: inline-block; width: 50px; height: 28px; flex-shrink: 0; }

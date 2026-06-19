@@ -17,18 +17,19 @@ const TILE_LAYERS = {
 };
 
 const LAYER_LS_KEY = 'ais_base_layer';
-const RING_LS_KEY = 'ais_rings';
+const RING_LS_PREFIX = 'ais_rings_';
 let baseTileLayer = null;
 let currentLayerKey = localStorage.getItem(LAYER_LS_KEY) || 'dark';
 let vesselsData = {};
 let historyData = {};
 let markers = {};
 let trails = {};
-let rangeRings = [];
+let rangeRingsLayer = null;
+let rangeRingsDrawKey = '';
 let selectedMmsi = null;
 let followMmsi = null;
 let showTrails = true;
-let showRings = true;
+let showRings = localStorage.getItem(RING_LS_PREFIX + 'enabled') !== '0';
 let currentTab = 'active';
 let receiverPos = null;
 let receiverMarker = null;
@@ -39,6 +40,7 @@ function el(id) { return document.getElementById(id); }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function fmtSpd(v) { return v != null ? `${v} kt` : '—'; }
 function fmtDist(v) { return v != null ? `${v} nm` : '—'; }
+function fmtRingDist(nm) { return nm >= 1 ? `${nm % 1 === 0 ? nm : nm.toFixed(1)}nm` : `${Math.round(nm * 1852)}m`; }
 function fmtCourse(v) { return v != null ? `${v}°` : '—'; }
 function fmtTcpa(v) { return v != null ? `${v} min` : '—'; }
 function fmtAge(ts) {
@@ -66,6 +68,32 @@ function vesselColor(v) {
   if (v.ship_type === 35 || v.ship_type === 55) return '#ff8080';
   if ((v.speed || 0) > 20) return '#3ddc84';
   return '#e8b04f';
+}
+
+function hexToRgba(hex, alpha) {
+  const clean = /^#[0-9a-f]{6}$/i.test(hex || '') ? hex : '#aaaaaa';
+  const r = parseInt(clean.slice(1,3), 16);
+  const g = parseInt(clean.slice(3,5), 16);
+  const b = parseInt(clean.slice(5,7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+function tintColor(hex, v) {
+  const clean = /^#[0-9a-f]{6}$/i.test(hex || '') ? hex : '#aaaaaa';
+  const r = parseInt(clean.slice(1,3), 16);
+  const g = parseInt(clean.slice(3,5), 16);
+  const b = parseInt(clean.slice(5,7), 16);
+  const mix = c => Math.round(c + (255 - c) * (1 - v));
+  return '#' + [mix(r), mix(g), mix(b)].map(x => x.toString(16).padStart(2, '0')).join('');
+}
+function offsetByNm(lat, lon, nm, bearingDeg) {
+  const radiusNm = 3440.065;
+  const d = nm / radiusNm;
+  const b = bearingDeg * Math.PI / 180;
+  const lat1 = lat * Math.PI / 180;
+  const lon1 = lon * Math.PI / 180;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(b));
+  const lon2 = lon1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+  return [lat2 * 180 / Math.PI, lon2 * 180 / Math.PI];
 }
 
 function setBaseLayer(key, offlineId) {
@@ -176,31 +204,161 @@ function toggleTrails() {
   else [...Object.values(vesselsData), ...Object.values(historyData)].forEach(updateTrail);
 }
 
-const RING_ALL = [5, 10, 25, 50, 75, 100, 150, 200];
-const RING_DEFAULT = [10, 25, 50];
-function getRingNm() {
-  try { const saved = JSON.parse(localStorage.getItem(RING_LS_KEY)); if (Array.isArray(saved) && saved.length) return saved; } catch(e) {}
-  return RING_DEFAULT.slice();
-}
-function toggleRingNm(nm) {
-  const cur = getRingNm();
-  const next = cur.includes(nm) ? cur.filter(v => v !== nm) : [...cur, nm].sort((a, b) => a - b);
-  try { localStorage.setItem(RING_LS_KEY, JSON.stringify(next)); } catch(e) {}
-  renderRingOpts(); drawRings();
-}
-function renderRingOpts() {
-  const c = el('rings-opts'); if (!c) return;
-  const active = getRingNm();
-  c.innerHTML = RING_ALL.map(nm => `<button class="ring-chip${active.includes(nm) ? ' active' : ''}" onclick="toggleRingNm(${nm})">${nm}nm</button>`).join('');
-}
-function drawRings() {
-  rangeRings.forEach(r => map.removeLayer(r)); rangeRings = [];
-  if (!showRings || !receiverPos) return;
-  getRingNm().forEach(nm => {
-    rangeRings.push(L.circle([receiverPos.lat, receiverPos.lon], { radius: nm * 1852, color: '#2a3550', weight: 1, fill: false, dashArray: '3 9' }).addTo(map));
+const RINGS_DEFAULT_COUNT = 3;
+const RINGS_DEFAULT_STEP = 10;
+const RINGS_DEFAULT_COLOR = '#aaaaaa';
+const RINGS_DEFAULT_HARDNESS = 0.5;
+const CARDINALS = [
+  { label: 'N',  bearing: 0,   anchor: [20, 20], main: true  },
+  { label: 'E',  bearing: 90,  anchor: [0,  10], main: true  },
+  { label: 'S',  bearing: 180, anchor: [20, 0],  main: true  },
+  { label: 'W',  bearing: 270, anchor: [40, 10], main: true  },
+  { label: 'NE', bearing: 45,  anchor: [0,  20], main: false },
+  { label: 'SE', bearing: 135, anchor: [0,  0],  main: false },
+  { label: 'SW', bearing: 225, anchor: [40, 0],  main: false },
+  { label: 'NW', bearing: 315, anchor: [40, 20], main: false },
+];
+let ringsCount = parseInt(localStorage.getItem(RING_LS_PREFIX + 'count') || '', 10) || RINGS_DEFAULT_COUNT;
+let ringsStep = parseFloat(localStorage.getItem(RING_LS_PREFIX + 'step') || '') || RINGS_DEFAULT_STEP;
+let ringsColor = localStorage.getItem(RING_LS_PREFIX + 'color') || RINGS_DEFAULT_COLOR;
+let ringsHardness = parseFloat(localStorage.getItem(RING_LS_PREFIX + 'hardness') || '') || RINGS_DEFAULT_HARDNESS;
+let ringsCardinals = (() => { const v = localStorage.getItem(RING_LS_PREFIX + 'cardinals'); return v != null ? parseInt(v, 10) : 4; })();
+
+function updateRingDirectionButtons() {
+  [['rings-dir-off', 0], ['rings-dir-4', 4], ['rings-dir-8', 8]].forEach(([id, value]) => {
+    const btn = el(id);
+    if (btn) btn.classList.toggle('active', ringsCardinals === value);
   });
 }
-function toggleRings() { showRings = el('rings-toggle').checked; drawRings(); }
+function updateRingSwatches() {
+  document.querySelectorAll('#rings-swatches .color-swatch').forEach(s => s.classList.toggle('selected', s.dataset.color === ringsColor));
+  const custom = el('rings-color-custom');
+  if (custom) custom.value = ringsColor;
+}
+function populateRingSettings() {
+  const toggle = el('rings-toggle');
+  if (toggle) toggle.checked = showRings;
+  const count = el('rings-count');
+  if (count) count.value = ringsCount;
+  const step = el('rings-step');
+  if (step) step.value = ringsStep;
+  const hardness = el('rings-hardness');
+  if (hardness) hardness.value = ringsHardness;
+  updateRingSwatches();
+  updateRingDirectionButtons();
+}
+function setRingsColor(color) {
+  if (!/^#[0-9a-f]{6}$/i.test(color || '')) return;
+  ringsColor = color;
+  localStorage.setItem(RING_LS_PREFIX + 'color', color);
+  rangeRingsDrawKey = '';
+  updateRingSwatches();
+  drawRings();
+}
+function setRingsHardness(value) {
+  const next = parseFloat(value);
+  if (!Number.isFinite(next)) return;
+  ringsHardness = Math.max(0.1, Math.min(1, next));
+  localStorage.setItem(RING_LS_PREFIX + 'hardness', String(ringsHardness));
+  rangeRingsDrawKey = '';
+  drawRings();
+}
+function setRingsCardinals(value) {
+  ringsCardinals = [0, 4, 8].includes(value) ? value : 4;
+  localStorage.setItem(RING_LS_PREFIX + 'cardinals', String(ringsCardinals));
+  rangeRingsDrawKey = '';
+  updateRingDirectionButtons();
+  drawRings();
+}
+function applyRingsSettings() {
+  const count = parseInt((el('rings-count') || {}).value || '', 10);
+  const step = parseFloat((el('rings-step') || {}).value || '');
+  if (Number.isFinite(count)) ringsCount = Math.max(1, Math.min(10, count));
+  if (Number.isFinite(step)) ringsStep = Math.max(0.1, step);
+  localStorage.setItem(RING_LS_PREFIX + 'count', String(ringsCount));
+  localStorage.setItem(RING_LS_PREFIX + 'step', String(ringsStep));
+  rangeRingsDrawKey = '';
+  populateRingSettings();
+  drawRings();
+}
+function initRingSettings() {
+  document.querySelectorAll('#rings-swatches .color-swatch').forEach(s => { s.onclick = () => setRingsColor(s.dataset.color); });
+  const custom = el('rings-color-custom');
+  if (custom) custom.oninput = () => setRingsColor(custom.value);
+  const hardness = el('rings-hardness');
+  if (hardness) hardness.oninput = () => setRingsHardness(hardness.value);
+  const count = el('rings-count');
+  if (count) count.onchange = applyRingsSettings;
+  const step = el('rings-step');
+  if (step) step.onchange = applyRingsSettings;
+  populateRingSettings();
+}
+function drawRings() {
+  if (!showRings || !receiverPos) {
+    if (rangeRingsLayer) { map.removeLayer(rangeRingsLayer); rangeRingsLayer = null; }
+    rangeRingsDrawKey = '';
+    return;
+  }
+  const key = `${receiverPos.lat.toFixed(6)},${receiverPos.lon.toFixed(6)}|${ringsCount}|${ringsStep}|${ringsColor}|${ringsHardness}|${ringsCardinals}`;
+  if (key === rangeRingsDrawKey && rangeRingsLayer) return;
+  if (rangeRingsLayer) map.removeLayer(rangeRingsLayer);
+  rangeRingsLayer = L.layerGroup().addTo(map);
+  rangeRingsDrawKey = key;
+  const hardness = Math.max(0.1, Math.min(1, ringsHardness));
+  const tinted = tintColor(ringsColor, hardness);
+  const ringColor = hexToRgba(tinted, 0.45 + hardness * 0.35);
+  const labelColor = hexToRgba(tinted, 0.80 + hardness * 0.20);
+  const spokeColor = hexToRgba(tinted, 0.55 + hardness * 0.30);
+  const weight = 0.6 + hardness * 1.4;
+  for (let i = 1; i <= ringsCount; i++) {
+    const nm = i * ringsStep;
+    L.circle([receiverPos.lat, receiverPos.lon], {
+      radius: nm * 1852,
+      color: ringColor,
+      weight,
+      fillOpacity: 0,
+      interactive: false,
+    }).addTo(rangeRingsLayer);
+    const labelPoint = offsetByNm(receiverPos.lat, receiverPos.lon, nm, 0);
+    L.marker(labelPoint, {
+      icon: L.divIcon({
+        html: `<div class="range-ring-label" style="color:${labelColor}">${fmtRingDist(nm)}</div>`,
+        iconAnchor: [-2, 8],
+        className: '',
+      }),
+      interactive: false,
+    }).addTo(rangeRingsLayer);
+  }
+  if (ringsCardinals > 0) {
+    const outerNm = ringsCount * ringsStep;
+    const labelNm = outerNm * 1.18;
+    const cards = ringsCardinals >= 8 ? CARDINALS : CARDINALS.filter(c => c.main);
+    cards.forEach(c => {
+      const tip = offsetByNm(receiverPos.lat, receiverPos.lon, outerNm, c.bearing);
+      L.polyline([[receiverPos.lat, receiverPos.lon], tip], {
+        color: spokeColor,
+        weight: c.main ? 1.5 : 1,
+        dashArray: c.main ? '6,5' : '3,6',
+        interactive: false,
+      }).addTo(rangeRingsLayer);
+      const labelPoint = offsetByNm(receiverPos.lat, receiverPos.lon, labelNm, c.bearing);
+      L.marker(labelPoint, {
+        icon: L.divIcon({
+          html: `<div class="range-ring-cardinal${c.main ? ' main' : ''}" style="color:${labelColor}">${c.label}</div>`,
+          iconAnchor: c.anchor,
+          className: '',
+        }),
+        interactive: false,
+      }).addTo(rangeRingsLayer);
+    });
+  }
+}
+function toggleRings() {
+  showRings = el('rings-toggle').checked;
+  localStorage.setItem(RING_LS_PREFIX + 'enabled', showRings ? '1' : '0');
+  rangeRingsDrawKey = '';
+  drawRings();
+}
 function updateReceiverMarker(pos) {
   if (!pos || pos.lat == null || pos.lon == null) return;
   const ll = [pos.lat, pos.lon];
@@ -309,7 +467,7 @@ async function poll() {
 }
 
 async function aisAction(action) { try { await fetch(`/api/ais/${action}`, { method: 'POST' }); setTimeout(poll, 500); } catch(e) {} }
-function toggleSettings() { const s = el('settings'); s.classList.toggle('hidden'); if (!s.classList.contains('hidden')) { renderLayerPicker(); renderRingOpts(); loadReceiverStatus(); loadVersion(); loadVesselDbStatus(); loadAlertSettings(); } }
+function toggleSettings() { const s = el('settings'); s.classList.toggle('hidden'); if (!s.classList.contains('hidden')) { renderLayerPicker(); populateRingSettings(); loadReceiverStatus(); loadVersion(); loadVesselDbStatus(); loadAlertSettings(); } }
 function setAccent(color) { document.documentElement.style.setProperty('--accent', color); document.documentElement.style.setProperty('--accent-dim', color + '2e'); localStorage.setItem('ais_accent', color); }
 function loadAccent() { const c = localStorage.getItem('ais_accent'); if (c) { setAccent(c); const input = el('accent-input'); if (input) input.value = c; } }
 
@@ -468,4 +626,4 @@ async function appShutdown() {
 }
 function tickClock() { const d = new Date(); el('hdr-clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
-loadAccent(); renderRingOpts(); poll(); loadReceiverStatus(); loadVesselDbStatus(); loadAlertSettings(); loadVersion(); tickClock(); setInterval(tickClock, 1000); setInterval(loadReceiverStatus, 10000);
+loadAccent(); initRingSettings(); poll(); loadReceiverStatus(); loadVesselDbStatus(); loadAlertSettings(); loadVersion(); tickClock(); setInterval(tickClock, 1000); setInterval(loadReceiverStatus, 10000);
