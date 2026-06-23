@@ -556,12 +556,15 @@ async function clearVesselDb() {
 async function loadVersion() { try { const d = await (await fetch('/api/version')).json(); el('app-version').textContent = `AIS App ${d.version} · ${d.commit}`; } catch(e) {} }
 async function checkUpdate() { const msg = el('update-msg'); msg.textContent = 'Checking…'; try { const d = await (await fetch('/api/system/check-update', { method: 'POST' })).json(); msg.textContent = d.ok ? (d.behind ? `${d.behind} commits behind` : 'Up to date') : d.error; } catch(e) { msg.textContent = 'Update check failed'; } }
 async function updateApp() { const msg = el('update-msg'); msg.textContent = 'Updating…'; try { const d = await (await fetch('/api/system/update', { method: 'POST' })).json(); msg.textContent = d.ok ? 'Updated, restarting…' : d.error; } catch(e) { msg.textContent = 'Update failed'; } }
-function _showSplash(title, msg) {
+function _showSplash(title, msg, {cmd = null, dashboard = false} = {}) {
   const d = document.createElement('div');
   d.style.cssText = 'position:fixed;inset:0;background:#000;z-index:9999;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif';
-  d.innerHTML = `<div style="text-align:center;padding:24px">
-    <div style="font-size:clamp(2.5rem,8vw,5.5rem);font-weight:700;color:var(--accent);letter-spacing:0.04em;line-height:1">AIS app</div>
-    <div style="margin-top:18px;font-size:1rem;color:#777;letter-spacing:0.05em">${esc(msg)}</div>
+  const cmdHtml = cmd ? `<div style="font-size:0.78rem;color:#555;margin-bottom:6px">Or run:</div><code onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy" style="display:inline-block;font-size:0.78rem;background:#111722;border:1px solid rgba(255,255,255,0.08);padding:6px 14px;border-radius:8px;cursor:pointer;user-select:all;color:#aaa">${cmd}</code>` : '';
+  const dashHtml = dashboard ? '<div style="font-size:0.78rem;color:#555;margin-top:14px">Or launch from the Dashboard.</div>' : '';
+  d.innerHTML = `<div style="text-align:center;padding:32px;max-width:440px">
+    <div style="font-size:clamp(2.5rem,8vw,5.5rem);font-weight:700;color:var(--accent);letter-spacing:0.04em;line-height:1;margin-bottom:28px">${esc(title)}</div>
+    <div style="font-size:0.95rem;color:#ccc;letter-spacing:0.04em;margin-bottom:${cmd ? '18px' : '0'}">${esc(msg)}</div>
+    ${cmdHtml}${dashHtml}
   </div>`;
   document.body.appendChild(d);
 }
@@ -608,7 +611,7 @@ async function appRestart() {
     confirmText: 'Restart',
   });
   if (!ok) return;
-  _showSplash('AIS app', 'Restarting...');
+  _showSplash('AIS', 'Restarting…');
   try { await fetch('/api/system/restart', { method: 'POST' }); } catch(e) {}
   setTimeout(() => location.reload(), 4000);
 }
@@ -621,7 +624,7 @@ async function appShutdown() {
     danger: true,
   });
   if (!ok) return;
-  _showSplash('AIS app', 'The app is shut down. Start it back up from the Dashboard.');
+  _showSplash('AIS', 'AIS stopped.', {cmd: 'systemctl --user start ais-app', dashboard: true});
   try { await fetch('/api/system/shutdown', { method: 'POST' }); } catch(e) {}
 }
 function tickClock() { const d = new Date(); el('hdr-clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
