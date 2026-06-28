@@ -167,6 +167,30 @@
   Tap map to place receiver · Esc to cancel
 </div>
 
+<div id="service-splash" class="service-splash" hidden data-mode="restart">
+  <div class="ss-panel">
+    <div class="ss-sonar">
+      <div class="ss-sonar-ring"></div>
+      <div class="ss-sonar-ring"></div>
+      <div class="ss-sonar-ring"></div>
+      <div class="ss-sonar-dot"></div>
+    </div>
+    <div class="ss-wordmark">AIS</div>
+    <div class="ss-tagline">Marine Traffic</div>
+    <div class="ss-status-wrap"><div class="ss-status">
+      <span class="ss-txt-shutdown">OFFLINE</span>
+      <span class="ss-txt-restart">RESTARTING</span>
+    </div></div>
+    <div class="ss-anim"><div class="ss-dots">
+      <div class="ss-dot"></div><div class="ss-dot"></div>
+      <div class="ss-dot"></div><div class="ss-dot"></div>
+    </div></div>
+    <div class="ss-hint">
+      <div class="ss-hint-label">To restart</div>
+      <code class="ss-hint-cmd" onclick="navigator.clipboard.writeText(this.textContent)" title="Click to copy">systemctl --user restart ais-app</code>
+    </div>
+  </div>
+</div>
 <script src="/static/lib/leaflet.js?v={{ asset_version }}" onerror="(function(){var s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';document.head.appendChild(s)})()"></script>
 <script src="/static/js/app.js?v={{ asset_version }}"></script>
 </body>
