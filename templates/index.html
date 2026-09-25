@@ -69,6 +69,21 @@
   <div class="set-section">Map Layer</div>
   <div id="layer-picker"></div>
 
+  <!-- CARTO API key: the operator's own, never bundled with the app -->
+  <div class="set-section">CARTO API Key</div>
+  <div style="padding:0 14px 10px;display:flex;flex-direction:column;gap:8px">
+    <div style="font-size:0.74rem;color:var(--muted);line-height:1.45">
+      CARTO's raster layers need an API key on the tile URL. Use <b>your own</b> — it is kept only in this
+      browser, never in the app's source, and is only ever sent to CARTO.
+    </div>
+    <div style="display:flex;gap:8px">
+      <input id="carto-key-input" class="layer-key-input" type="text" placeholder="Paste your CARTO key here" style="flex:1">
+      <button class="set-btn" onclick="saveCartoKey()">Save</button>
+      <button class="set-btn" onclick="clearCartoKey()">Clear</button>
+    </div>
+    <div id="carto-key-status" style="font-size:0.74rem;color:var(--muted)"></div>
+  </div>
+
   <div class="set-section">Display</div>
   <div class="set-row">
     <span>Range rings</span>
