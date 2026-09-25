@@ -9,35 +9,48 @@ const map = L.map('map', { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, zoomContr
 // (`ais_carto_key`), and it is appended to these URLs at runtime. With no key these layers are unavailable
 // and the app falls back to a key-free basemap (`KEYLESS_FALLBACK`) — it never spends someone else's quota.
 const TILE_LAYERS = {
-  dark: { label: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 18, key: true },
-  dark_nolabels: { label: 'Dark No Labels', url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', maxZoom: 18, key: true },
-  voyager: { label: 'Voyager', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 19, key: true },
-  positron: { label: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', maxZoom: 19, key: true },
+  dark: { label: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' },
+  dark_nolabels: { label: 'Dark No Labels', url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' },
+  voyager: { label: 'Voyager', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' },
+  positron: { label: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' },
   esri_gray_dark: { label: 'Esri Dark Gray', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16 },
   esri_sat: { label: 'Esri Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 },
   esri_topo: { label: 'Esri Topo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 },
-  stadia_outdoors: { label: 'Stadia Outdoors', url: 'https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png', maxZoom: 20 },
-  stamen_terrain: { label: 'Stamen Terrain', url: 'https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png', maxZoom: 18 },
+  // 2026-09-25: these two were DEAD — Stadia now requires a key and they shipped without one, so they
+  // returned HTTP 401 with a blocked-tile image. They now use the same own-key rule as CARTO.
+  stadia_outdoors: { label: 'Stadia Outdoors', url: 'https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png', maxZoom: 20, key: 'stadia' },
+  stamen_terrain: { label: 'Stamen Terrain', url: 'https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'stadia' },
 };
 
 const LAYER_LS_KEY = 'ais_base_layer';
 const RING_LS_PREFIX = 'ais_rings_';
-const CARTO_KEY_LS = 'ais_carto_key';          // the operator's own key — local to this browser, never in source
+// Keyed basemap providers (2026-09-25). Each provider has its OWN localStorage slot and its OWN query
+// parameter — CARTO takes ?key=, Stadia takes ?api_key= — and a layer names its provider in `key`.
+// There is deliberately no built-in key for either: a bundled key is spent by every user's browser.
+const KEY_PROVIDERS = {
+  carto:  { ls: 'ais_carto_key',  param: 'key',     label: 'CARTO'  },
+  stadia: { ls: 'ais_stadia_key', param: 'api_key', label: 'Stadia' },
+};
 const KEYLESS_FALLBACK = 'esri_gray_dark';     // shown when a keyed layer is remembered/selected but no key is set
 let baseTileLayer = null;
 let currentLayerKey = localStorage.getItem(LAYER_LS_KEY) || 'dark';
 
-function cartoKey() {
-  try { return (localStorage.getItem(CARTO_KEY_LS) || '').trim(); } catch(e) { return ''; }
+function providerKey(name) {
+  const p = KEY_PROVIDERS[name];
+  if (!p) return '';
+  try { return (localStorage.getItem(p.ls) || '').trim(); } catch(e) { return ''; }
 }
+// Kept so the CARTO callers that predate the second provider keep working unchanged.
+function cartoKey() { return providerKey('carto'); }
+function layerKey(def) { return def && def.key ? providerKey(def.key) : ''; }
 // A keyed layer only ever gets a key from the user's own stored value — there is deliberately no built-in key.
 function layerUrl(def) {
   if (!def) return '';
   if (!def.key) return def.url;
-  const k = cartoKey();
-  return k ? def.url + '?key=' + encodeURIComponent(k) : '';
+  const k = layerKey(def);
+  return k ? def.url + '?' + KEY_PROVIDERS[def.key].param + '=' + encodeURIComponent(k) : '';
 }
-function layerAvailable(def) { return !!def && (!def.key || !!cartoKey()); }
+function layerAvailable(def) { return !!def && (!def.key || !!layerKey(def)); }
 let vesselsData = {};
 let historyData = {};
 let markers = {};
@@ -119,7 +132,7 @@ function setBaseLayer(key, offlineId) {
   // quietly use a key that isn't the user's — it opens the key field instead.
   if (!offlineId) {
     const target = TILE_LAYERS[key] || TILE_LAYERS.dark;
-    if (!layerAvailable(target)) { openCartoKeyPrompt(); return; }
+    if (!layerAvailable(target)) { openKeyPrompt(target.key); return; }
   }
   if (baseTileLayer) { map.removeLayer(baseTileLayer); baseTileLayer = null; }
   if (offlineId) {
@@ -151,31 +164,34 @@ function initBaseTiles() {
   baseTileLayer = L.tileLayer(layerUrl(def), { maxZoom: def.maxZoom }).addTo(map);
 }
 
-// ─── CARTO key (user-supplied, stored in this browser only) ──────────────────
-function updateCartoKeyUI() {
-  const inp = el('carto-key-input');
-  const st  = el('carto-key-status');
-  if (inp && document.activeElement !== inp) inp.value = cartoKey();
+// ─── Provider keys (CARTO + Stadia): user-supplied, stored in this browser only ────────
+function updateProviderKeyUI(name) {
+  const p   = KEY_PROVIDERS[name];
+  const inp = el(`${name}-key-input`);
+  const st  = el(`${name}-key-status`);
+  if (inp && document.activeElement !== inp) inp.value = providerKey(name);
   if (st) {
-    st.textContent = cartoKey()
-      ? 'Using your own CARTO key (stored in this browser only).'
-      : 'No key set — CARTO layers are disabled. Paste your own key to enable them.';
+    st.textContent = providerKey(name)
+      ? `Using your own ${p.label} key (stored in this browser only).`
+      : `No ${p.label} key set — ${p.label} layers are unavailable. Paste your own key to enable them.`;
   }
 }
+function updateCartoKeyUI() { updateProviderKeyUI('carto'); updateProviderKeyUI('stadia'); }
 
-function openCartoKeyPrompt() {
+function openKeyPrompt(name) {
   const s = el('settings');
   if (s && s.classList.contains('hidden')) toggleSettings();
-  const inp = el('carto-key-input');
+  const inp = el(`${name}-key-input`);
   if (inp) { inp.focus(); inp.select(); }
 }
+function openCartoKeyPrompt() { openKeyPrompt('carto'); }
 
-function saveCartoKey() {
-  const inp = el('carto-key-input');
+function saveProviderKey(name) {
+  const inp = el(`${name}-key-input`);
   const v   = ((inp && inp.value) || '').trim();
   try {
-    if (v) localStorage.setItem(CARTO_KEY_LS, v);
-    else   localStorage.removeItem(CARTO_KEY_LS);
+    if (v) localStorage.setItem(KEY_PROVIDERS[name].ls, v);
+    else   localStorage.removeItem(KEY_PROVIDERS[name].ls);
   } catch(e) {}
   updateCartoKeyUI();
   // Apply immediately: prefer the remembered layer if it is usable now, otherwise keep what is on screen.
@@ -183,29 +199,32 @@ function saveCartoKey() {
   if (TILE_LAYERS[remembered] && layerAvailable(TILE_LAYERS[remembered])) setBaseLayer(remembered);
   else renderLayerPicker();
 }
+function saveCartoKey() { saveProviderKey('carto'); }
 
-function clearCartoKey() {
-  try { localStorage.removeItem(CARTO_KEY_LS); } catch(e) {}
+function clearProviderKey(name) {
+  try { localStorage.removeItem(KEY_PROVIDERS[name].ls); } catch(e) {}
   updateCartoKeyUI();
   // Never leave the map on a layer we can no longer key — drop to the key-free fallback.
   const cur = TILE_LAYERS[currentLayerKey];
-  if (cur && cur.key) setBaseLayer(KEYLESS_FALLBACK);
+  if (cur && cur.key === name) setBaseLayer(KEYLESS_FALLBACK);
   else renderLayerPicker();
 }
+function clearCartoKey() { clearProviderKey('carto'); }
 
 function renderLayerPicker() {
   const container = el('layer-picker');
   if (!container) return;
   let html = '';
   Object.entries(TILE_LAYERS).forEach(([key, def]) => {
-    const locked = def.key && !cartoKey();
+    const locked = !!def.key && !layerKey(def);
     const tag = def.key
       ? ' <span style="font-size:0.58rem;color:var(--muted);border:1px solid var(--muted);border-radius:3px;padding:0 3px;margin-left:4px">key</span>'
       : '';
     html += `<div class="layer-opt${currentLayerKey === key ? ' active' : ''}"${locked ? ' style="opacity:0.55"' : ''} onclick="setBaseLayer('${key}')">${def.label}${tag}</div>`;
   });
-  if (!cartoKey()) {
-    html += '<div style="font-size:0.72rem;color:var(--muted);padding:4px 14px 0;line-height:1.4">CARTO layers need your own API key — add it below to enable them.</div>';
+  const missing = ['carto', 'stadia'].filter(n => !providerKey(n)).map(n => KEY_PROVIDERS[n].label);
+  if (missing.length) {
+    html += `<div style="font-size:0.72rem;color:var(--muted);padding:4px 14px 0;line-height:1.4">${missing.join(' and ')} layers need your own API key — add it below to enable them.</div>`;
   }
   html += '<div class="set-section" style="padding-top:6px">Offline</div>';
   html += '<div id="offline-layers-list"><div class="layer-opt" style="pointer-events:none;opacity:0.5">Loading…</div></div>';
