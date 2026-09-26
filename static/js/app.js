@@ -2,34 +2,37 @@
 
 const DEFAULT_CENTER = [46.15, 14.65];
 const DEFAULT_ZOOM = 8;
-const map = L.map('map', { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, zoomControl: true, attributionControl: false });
+const map = L.map('map', { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, zoomControl: true, attributionControl: true });
 
 // ⚠️ The four CARTO layers carry NO key here on purpose. CARTO requires an API key on the raster tile URL,
 // and it must be the *operator's own*: each user pastes theirs in Settings, it is kept in localStorage
 // (`ais_carto_key`), and it is appended to these URLs at runtime. With no key these layers are unavailable
 // and the app falls back to a key-free basemap (`KEYLESS_FALLBACK`) — it never spends someone else's quota.
 const TILE_LAYERS = {
-  dark: { label: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' },
-  dark_nolabels: { label: 'Dark No Labels', url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' },
-  voyager: { label: 'Voyager', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' },
-  positron: { label: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' },
-  esri_gray_dark: { label: 'Esri Dark Gray', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16 },
-  esri_sat: { label: 'Esri Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 },
-  esri_topo: { label: 'Esri Topo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 },
-  // 2026-09-25: these two were DEAD — Stadia now requires a key and they shipped without one, so they
-  // returned HTTP 401 with a blocked-tile image. They now use the same own-key rule as CARTO.
-  stadia_outdoors: { label: 'Stadia Outdoors', url: 'https://tiles.stadiamaps.com/tiles/outdoors/{z}/{x}/{y}{r}.png', maxZoom: 20, key: 'stadia' },
-  stamen_terrain: { label: 'Stamen Terrain', url: 'https://tiles.stadiamaps.com/tiles/stamen_terrain/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'stadia' },
+  dark: { label: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
+  dark_nolabels: { label: 'Dark No Labels', url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
+  voyager: { label: 'Voyager', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
+  positron: { label: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
+  esri_gray_dark: { label: 'Esri Dark Gray', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16 , attribution: 'Esri, HERE, Garmin, (c) OpenStreetMap contributors, and the GIS user community' },
+  esri_sat: { label: 'Esri Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 , attribution: 'Esri, Vantor, Earthstar Geographics, and the GIS User Community' },
+  esri_topo: { label: 'Esri Topo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 , attribution: 'Esri, HERE, Garmin, Intermap, increment P Corp., GEBCO, USGS, FAO, NPS, NRCAN, GeoBase, IGN, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), (c) OpenStreetMap contributors, and the GIS User Community' },
+  // 2026-09-26: these two slots were "Stadia Outdoors" and "Stamen Terrain". Stadia needs an account, so
+  // without a pasted key every tile came back HTTP 401 with a 512x512 "blocked" placeholder that Leaflet
+  // scaled into the map (verified: identical 14885-byte body at every zoom). Both are now key-free:
+  // OpenTopoMap (outdoors, with terrain shading) and Esri World_Street_Map (streets — neither app had a
+  // street layer). Esri's World_Shaded_Relief was tried and REJECTED: its z14 tile reads "Map data not
+  // yet available" — a 200 carrying an image, the same silent shape as the esri_gray_dark bug.
+  opentopo: { label: 'OpenTopoMap', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', maxZoom: 17, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)' },
+  esri_streets: { label: 'Esri Streets', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 19, attribution: 'Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, (c) OpenStreetMap contributors, and the GIS User Community' },
 };
 
 const LAYER_LS_KEY = 'ais_base_layer';
 const RING_LS_PREFIX = 'ais_rings_';
 // Keyed basemap providers (2026-09-25). Each provider has its OWN localStorage slot and its OWN query
-// parameter — CARTO takes ?key=, Stadia takes ?api_key= — and a layer names its provider in `key`.
+// parameter — CARTO takes ?key= — and a layer names its provider in `key`.
 // There is deliberately no built-in key for either: a bundled key is spent by every user's browser.
 const KEY_PROVIDERS = {
   carto:  { ls: 'ais_carto_key',  param: 'key',     label: 'CARTO'  },
-  stadia: { ls: 'ais_stadia_key', param: 'api_key', label: 'Stadia' },
 };
 const KEYLESS_FALLBACK = 'esri_gray_dark';     // shown when a keyed layer is remembered/selected but no key is set
 let baseTileLayer = null;
@@ -140,7 +143,7 @@ function setBaseLayer(key, offlineId) {
     currentLayerKey = 'offline:' + offlineId;
   } else {
     const def = TILE_LAYERS[key] || TILE_LAYERS.dark;
-    baseTileLayer = L.tileLayer(layerUrl(def), { maxZoom: def.maxZoom }).addTo(map);
+    baseTileLayer = L.tileLayer(layerUrl(def), { maxZoom: def.maxZoom, attribution: def.attribution }).addTo(map);
     currentLayerKey = key;
   }
   try { localStorage.setItem(LAYER_LS_KEY, currentLayerKey); } catch(e) {}
@@ -161,10 +164,10 @@ function initBaseTiles() {
     def = TILE_LAYERS[KEYLESS_FALLBACK];
     currentLayerKey = KEYLESS_FALLBACK;
   }
-  baseTileLayer = L.tileLayer(layerUrl(def), { maxZoom: def.maxZoom }).addTo(map);
+  baseTileLayer = L.tileLayer(layerUrl(def), { maxZoom: def.maxZoom, attribution: def.attribution }).addTo(map);
 }
 
-// ─── Provider keys (CARTO + Stadia): user-supplied, stored in this browser only ────────
+// ─── Provider keys (CARTO): user-supplied, stored in this browser only ──────────────────
 function updateProviderKeyUI(name) {
   const p   = KEY_PROVIDERS[name];
   const inp = el(`${name}-key-input`);
@@ -176,7 +179,7 @@ function updateProviderKeyUI(name) {
       : `No ${p.label} key set — ${p.label} layers are unavailable. Paste your own key to enable them.`;
   }
 }
-function updateCartoKeyUI() { updateProviderKeyUI('carto'); updateProviderKeyUI('stadia'); }
+function updateCartoKeyUI() { updateProviderKeyUI('carto'); }
 
 function openKeyPrompt(name) {
   const s = el('settings');
@@ -222,7 +225,7 @@ function renderLayerPicker() {
       : '';
     html += `<div class="layer-opt${currentLayerKey === key ? ' active' : ''}"${locked ? ' style="opacity:0.55"' : ''} onclick="setBaseLayer('${key}')">${def.label}${tag}</div>`;
   });
-  const missing = ['carto', 'stadia'].filter(n => !providerKey(n)).map(n => KEY_PROVIDERS[n].label);
+  const missing = ['carto'].filter(n => !providerKey(n)).map(n => KEY_PROVIDERS[n].label);
   if (missing.length) {
     html += `<div style="font-size:0.72rem;color:var(--muted);padding:4px 14px 0;line-height:1.4">${missing.join(' and ')} layers need your own API key — add it below to enable them.</div>`;
   }
