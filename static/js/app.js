@@ -3,16 +3,18 @@
 const DEFAULT_CENTER = [46.15, 14.65];
 const DEFAULT_ZOOM = 8;
 const map = L.map('map', { center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM, zoomControl: true, attributionControl: true });
+// Provider credits only; the Leaflet flag/wordmark is courtesy, not a licence term.
+map.attributionControl.setPrefix(false);
 
 // ⚠️ The four CARTO layers carry NO key here on purpose. CARTO requires an API key on the raster tile URL,
 // and it must be the *operator's own*: each user pastes theirs in Settings, it is kept in localStorage
 // (`ais_carto_key`), and it is appended to these URLs at runtime. With no key these layers are unavailable
 // and the app falls back to a key-free basemap (`KEYLESS_FALLBACK`) — it never spends someone else's quota.
 const TILE_LAYERS = {
-  dark: { label: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
-  dark_nolabels: { label: 'Dark No Labels', url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
-  voyager: { label: 'Voyager', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
-  positron: { label: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' , attribution: '&copy; OpenStreetMap contributors &copy; CARTO' },
+  dark: { label: 'Dark Matter', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' , attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>' },
+  dark_nolabels: { label: 'Dark No Labels', url: 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', maxZoom: 18, key: 'carto' , attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>' },
+  voyager: { label: 'Voyager', url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' , attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>' },
+  positron: { label: 'Positron', url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', maxZoom: 19, key: 'carto' , attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>' },
   esri_gray_dark: { label: 'Esri Dark Gray', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', maxZoom: 16 , attribution: 'Esri, HERE, Garmin, (c) OpenStreetMap contributors, and the GIS user community' },
   esri_sat: { label: 'Esri Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 , attribution: 'Esri, Vantor, Earthstar Geographics, and the GIS User Community' },
   esri_topo: { label: 'Esri Topo', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 18 , attribution: 'Esri, HERE, Garmin, Intermap, increment P Corp., GEBCO, USGS, FAO, NPS, NRCAN, GeoBase, IGN, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), (c) OpenStreetMap contributors, and the GIS User Community' },
@@ -25,6 +27,18 @@ const TILE_LAYERS = {
   opentopo: { label: 'OpenTopoMap', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', maxZoom: 17, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)' },
   esri_streets: { label: 'Esri Streets', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', maxZoom: 19, attribution: 'Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, (c) OpenStreetMap contributors, and the GIS User Community' },
 };
+
+// Offline MBTiles packs come from mbtileserver, whose /services list carries no attribution.
+// The known CD packs are Esri Topo and the TF Atlas; map those, and never guess a provider for
+// an unknown id (an honest local label is better than a false credit).
+const TF_ATLAS_ATTR = 'Maps &copy; <a href="https://www.thunderforest.com/">Thunderforest</a>, Data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+function offlineAttribution(id) {
+  const s = String(id || '').toLowerCase();
+  if (s.includes('esri-topo') || s.includes('esri_topo')) return TILE_LAYERS.esri_topo.attribution;
+  if (s.includes('tf-atlas') || s.includes('tf_atlas')) return TF_ATLAS_ATTR;
+  if (s.includes('opentopo')) return TILE_LAYERS.opentopo.attribution;
+  return 'Local MBTiles · ' + id;
+}
 
 const LAYER_LS_KEY = 'ais_base_layer';
 const RING_LS_PREFIX = 'ais_rings_';
@@ -139,7 +153,7 @@ function setBaseLayer(key, offlineId) {
   }
   if (baseTileLayer) { map.removeLayer(baseTileLayer); baseTileLayer = null; }
   if (offlineId) {
-    baseTileLayer = L.tileLayer(`http://localhost:8092/services/${offlineId}/tiles/{z}/{x}/{y}`, { maxZoom: 16, tileSize: 256 }).addTo(map);
+    baseTileLayer = L.tileLayer(`http://localhost:8092/services/${offlineId}/tiles/{z}/{x}/{y}`, { maxZoom: 16, tileSize: 256, attribution: offlineAttribution(offlineId) }).addTo(map);
     currentLayerKey = 'offline:' + offlineId;
   } else {
     const def = TILE_LAYERS[key] || TILE_LAYERS.dark;
@@ -154,7 +168,7 @@ function initBaseTiles() {
   const saved = localStorage.getItem(LAYER_LS_KEY) || 'dark';
   if (saved.startsWith('offline:')) {
     const id = saved.slice(8);
-    baseTileLayer = L.tileLayer(`http://localhost:8092/services/${id}/tiles/{z}/{x}/{y}`, { maxZoom: 16, tileSize: 256 }).addTo(map);
+    baseTileLayer = L.tileLayer(`http://localhost:8092/services/${id}/tiles/{z}/{x}/{y}`, { maxZoom: 16, tileSize: 256, attribution: offlineAttribution(id) }).addTo(map);
     return;
   }
   let def = TILE_LAYERS[saved] || TILE_LAYERS.dark;
