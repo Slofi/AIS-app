@@ -6,6 +6,21 @@
 <title>AIS</title>
 <link rel="stylesheet" href="/static/lib/leaflet.css?v={{ asset_version }}" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
 <link rel="stylesheet" href="/static/css/app.css?v={{ asset_version }}">
+<style>
+.leaflet-bottom.leaflet-right { width: 100%; }
+.leaflet-control-attribution {
+  max-width: calc(100% - 70px);
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  line-height: 1.25;
+}
+.leaflet-control-attribution::-webkit-scrollbar { display: none; }
+</style>
 </head>
 <body>
 
