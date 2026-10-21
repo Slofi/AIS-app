@@ -552,7 +552,7 @@ async function poll() {
     const d = await (await fetch('/api/vessels')).json();
     const effRecv = d.effective_receiver?.lat != null ? d.effective_receiver : d.receiver?.lat != null ? d.receiver : null;
     if (effRecv) { receiverPos = effRecv; updateReceiverMarker(receiverPos); drawRings(); }
-    el('ais-dot').className = 'status-dot ' + (d.ais_running ? 'on' : 'off');
+    renderSdr(d.sdr);
     const startBtn = el('ais-start-btn');
     startBtn.classList.toggle('active', d.ais_running); startBtn.textContent = d.ais_running ? 'Running…' : 'Start';
     el('stat-count').textContent = `${d.stats.active_count} vessels`;
@@ -739,3 +739,12 @@ async function appShutdown() {
 function tickClock() { const d = new Date(); el('hdr-clock').textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
 
 loadAccent(); initRingSettings(); poll(); loadReceiverStatus(); loadVesselDbStatus(); loadAlertSettings(); loadVersion(); tickClock(); setInterval(tickClock, 1000); setInterval(loadReceiverStatus, 10000);
+
+// S466: RTL-SDR indicator — same states/colours in ADS-B, AIS, Sonde and Casper
+function renderSdr(sdr) {
+  if (!sdr) return;
+  const dot = { ok: 'on', missing: 'off', busy: 'off', stalled: 'off', starting: 'warn', idle: '' }[sdr.state] ?? '';
+  el('sdr-dot').className = 'status-dot ' + dot;
+  el('sdr-pill').className = 'sdr-pill ' + (sdr.state === 'ok' ? 'ok' : dot === 'off' ? 'bad' : '');
+  el('sdr-text').textContent = sdr.text;
+}

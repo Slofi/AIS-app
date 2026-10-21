@@ -42,6 +42,11 @@ html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(-
 }
 .status-dot.on  { background: var(--green); box-shadow: 0 0 6px rgba(61,220,132,0.6); }
 .status-dot.off { background: var(--red);   box-shadow: 0 0 6px rgba(255,80,80,0.5); }
+/* S466: RTL-SDR indicator (same look in ADS-B, AIS, Sonde, Casper) */
+.status-dot.warn { background: var(--accent); box-shadow: 0 0 6px rgba(232,176,79,0.6); }
+.sdr-pill      { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+.sdr-pill.ok   { color: var(--green); }
+.sdr-pill.bad  { color: var(--red); }
 
 .hdr-clock {
   font-size: 0.92rem; font-weight: 600; color: var(--muted);

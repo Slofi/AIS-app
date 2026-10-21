@@ -12,9 +12,12 @@ import socket
 import subprocess
 import threading
 import time
+import urllib.request
 from datetime import datetime
 
 from flask import Flask, Response, jsonify, render_template, request
+
+import rtlsdr_status   # S466: shared RTL-SDR indicator helpers (canonical copy: cyberdeck/launcher)
 
 app = Flask(__name__)
 
@@ -30,11 +33,17 @@ VESSEL_DB_META_FILE = os.path.join(CONFIG_DIR, 'vessel_db_meta.json')
 AIS_UDP_HOST = os.environ.get('AIS_UDP_HOST', '0.0.0.0')
 AIS_UDP_PORT = int(os.environ.get('AIS_UDP_PORT', '10110'))
 AIS_JSON_TCP_PORT = int(os.environ.get('AIS_JSON_TCP_PORT', '10111'))
+# S466: -N = AIS-catcher's stats server (its 'received' byte counter proves the dongle streams);
+# it listens on 0.0.0.0, reachable over tailscale0 only (ufw default deny).
+# -X off = no aiscatcher.org community feed (v0.68 shares by default).
+AIS_STATS_PORT = int(os.environ.get('AIS_STATS_PORT', '10112'))
 AIS_CMD = os.environ.get(
     'AIS_CMD',
-    f'AIS-catcher -d:0 -S {AIS_JSON_TCP_PORT} JSON_FULL on -q -gr TUNER 40'
+    f'AIS-catcher -d:0 -S {AIS_JSON_TCP_PORT} JSON_FULL on -q -X off -N {AIS_STATS_PORT} -gr TUNER 40'
 )
 GPS_POLL_INTERVAL = 5.0
+SDR_POLL_INTERVAL = 3.0   # RTL-SDR indicator refresh
+SDR_START_GRACE   = 20.0  # AIS-catcher opens the dongle in ~3 s
 GPS_OPSTOC_URL = 'http://localhost:8090/api/gps'
 GPS_OM_URL = 'http://localhost:8082/api/settings/gps'
 
@@ -53,6 +62,10 @@ _message_count = 0
 _last_message_time: float | None = None
 _udp_status = {'running': False, 'error': '', 'port': AIS_UDP_PORT}
 _decoder_proc: subprocess.Popen | None = None
+_decoder_started = 0.0     # time.monotonic() of the last decoder start (S466)
+_sdr = rtlsdr_status.result('starting', 'SDR checking…')  # S466 indicator
+_sdr_last_rx = None        # (pid, AIS-catcher 'received' bytes) from the previous check
+_sdr_msg_hist: list = []   # [(time, _message_count)] over the last minute
 _decoder_status = {'running': False, 'error': '', 'cmd': AIS_CMD, 'json_port': AIS_JSON_TCP_PORT}
 _vessel_db: dict[str, dict] = {}
 _vessel_db_meta: dict = {}
@@ -850,6 +863,46 @@ def _is_decoder_running() -> bool:
     return bool(proc and proc.poll() is None)
 
 
+def _sdr_health() -> dict:
+    """S466: RTL-SDR indicator — plugged in? decoder running? samples flowing?"""
+    global _sdr_last_rx
+    R = rtlsdr_status.result
+    if not rtlsdr_status.present():
+        return R('missing', 'RTL-SDR not connected')
+    proc = _decoder_proc
+    if not proc or proc.poll() is not None:
+        st = rtlsdr_status.not_running(('AIS',))
+        if proc and proc.returncode not in (0, -15) and st['state'] == 'idle':
+            return R('stalled', f'AIS decoder exited (code {proc.returncode})')
+        return st
+    starting = time.monotonic() - _decoder_started < SDR_START_GRACE
+    try:
+        with urllib.request.urlopen(f'http://127.0.0.1:{AIS_STATS_PORT}/api/stat.json', timeout=1.5) as r:
+            received = int(json.load(r)['received'])
+    except Exception:
+        return R('starting', 'SDR starting…') if starting else R('stalled', 'SDR not responding · no AIS-catcher stats')
+    prev, _sdr_last_rx = _sdr_last_rx, (proc.pid, received)
+    if not prev or prev[0] != proc.pid:
+        return R('starting', 'SDR starting…')
+    if received <= prev[1]:
+        return R('starting', 'SDR starting…') if starting else R('stalled', 'SDR not responding · no samples')
+    now = time.time()
+    _sdr_msg_hist.append((now, _message_count))
+    while _sdr_msg_hist and _sdr_msg_hist[0][0] < now - 60:
+        _sdr_msg_hist.pop(0)
+    return R('ok', rtlsdr_status.traffic_text(_message_count - _sdr_msg_hist[0][1]))
+
+
+def _sdr_poll():
+    global _sdr
+    while True:
+        try:
+            _sdr = _sdr_health()
+        except Exception as exc:
+            _sdr = rtlsdr_status.result('stalled', f'SDR check failed: {exc}')
+        time.sleep(SDR_POLL_INTERVAL)
+
+
 def _save_receiver_config():
     try:
         os.makedirs(os.path.dirname(RECEIVER_CONFIG_FILE), exist_ok=True)
@@ -995,6 +1048,7 @@ def get_vessels():
         'receiver': receiver,
         'effective_receiver': effective_receiver,
         'ais_running': _is_decoder_running(),
+        'sdr': _sdr,
         'udp': _udp_status,
         'decoder': {**_decoder_status, 'running': _is_decoder_running(), 'json_port': AIS_JSON_TCP_PORT},
         'stats': {
@@ -1015,7 +1069,7 @@ def get_vessels():
 
 @app.route('/api/ais/start', methods=['POST'])
 def ais_start():
-    global _decoder_proc, _decoder_status
+    global _decoder_proc, _decoder_status, _decoder_started
     if _is_decoder_running():
         return jsonify({'ok': True, 'already_running': True})
     exe = shlex.split(AIS_CMD)[0] if AIS_CMD else ''
@@ -1027,6 +1081,7 @@ def ais_start():
             shlex.split(AIS_CMD), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             text=True, bufsize=1
         )
+        _decoder_started = time.monotonic()
         _decoder_status = {'running': True, 'error': '', 'cmd': AIS_CMD, 'json_port': AIS_JSON_TCP_PORT}
         threading.Thread(target=_json_tcp_reader, args=(_decoder_proc,), daemon=True).start()
         threading.Thread(target=_decoder_reader, args=(_decoder_proc,), daemon=True).start()
@@ -1236,6 +1291,7 @@ _load_vessel_db()
 _load_receiver_config()
 threading.Thread(target=_udp_listener, daemon=True).start()
 threading.Thread(target=_gps_poll, daemon=True).start()
+threading.Thread(target=_sdr_poll, daemon=True).start()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('AIS_APP_PORT', '5410')), debug=False)
